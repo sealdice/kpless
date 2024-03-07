@@ -8,6 +8,7 @@ import (
 )
 
 type Game struct {
+	kp    *KPLess
 	scene *Scene
 	book  *Book
 	opts  []*Opt
@@ -15,7 +16,7 @@ type Game struct {
 
 func (g *Game) Next(content string) (string, error) {
 	if g.scene == nil {
-		g.scene = g.book.Scenes[0]
+		g.scene = g.book.SceneList[0]
 		return g.scene.Execute(g), nil
 	}
 
@@ -33,11 +34,11 @@ func (g *Game) Next(content string) (string, error) {
 	}
 
 	for _, opt := range g.opts {
-		if opt.tip == content {
+		if opt.NextTip == content {
 			return g.scene.Jump(opt, g)
 		}
 	}
-	return "无法跳转 游戏结束", io.EOF
+	return "不理解选项含义 游戏结束", io.EOF
 }
 
 func (g *Game) ResetOpt() {
