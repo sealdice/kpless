@@ -16,7 +16,7 @@ type Game struct {
 
 func (g *Game) Next(ctx RollVM, content string) (string, error) {
 	if g.scene == nil {
-		g.scene = g.book.SceneList[0]
+		g.scene = g.book.topScene[0]
 		return g.scene.Execute(ctx, g), nil
 	}
 

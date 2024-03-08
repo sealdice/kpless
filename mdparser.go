@@ -2,17 +2,25 @@ package kpless
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"regexp"
-	"strings"
 )
 
+func newMDParser() *mdParser {
+	return &mdParser{meta: map[string]string{}}
+}
+
 type mdParser struct {
+	isMeta    bool
+	isCodes   bool
+	meta      map[string]string
 	lineCount int
 	pageCount int
 	cur       *Scene
 	book      Book
 	scenes    []*Scene
+	codes     []byte
 }
 
 func (p *mdParser) createScene(title string, nextLevel int) error {
@@ -48,8 +56,8 @@ func (p *mdParser) createScene(title string, nextLevel int) error {
 	return nil
 }
 
-// * {cond} [tip](#title) {after}
-var optRegexp = regexp.MustCompile(`^\*\s+({[\s\S]+})?\s*\[(.+)]\(#(.+)\)\s*({[\s\S]+})?`)
+// * cond [tip](#title) after
+var optRegexp = regexp.MustCompile(`^\*\s+([\s\S]+)?\s*\[(.+)]\(#(.+)\)\s*([\s\S]+)?`)
 
 func (p *mdParser) addNode(line string) error {
 	ls := optRegexp.FindStringSubmatch(line)
@@ -57,12 +65,11 @@ func (p *mdParser) addNode(line string) error {
 		if ls[3] == p.cur.Title && ls[1] == "" {
 			return fmt.Errorf("跳转到自己，且没有跳出条件，形成死循环 %d", p.lineCount)
 		}
-		r := strings.NewReplacer("{", "", "}", "")
 		p.cur.AddBlock(&Opt{
-			BeforeCondition: r.Replace(ls[1]),
+			BeforeCondition: ls[1],
 			Content:         ls[2],
 			NextTitle:       ls[3],
-			AfterEval:       r.Replace(ls[4]),
+			AfterEval:       ls[4],
 		})
 		return nil
 	}
@@ -71,9 +78,8 @@ func (p *mdParser) addNode(line string) error {
 	i := 0
 	for {
 		if i >= len(line) {
-			if line != "" {
-				p.cur.AddBlock(&line)
-			}
+			line += "\n"
+			p.cur.AddBlock(&line)
 			break
 		}
 		if line[i:i+1] == "{" {
@@ -98,20 +104,61 @@ func (p *mdParser) addNode(line string) error {
 	return nil
 }
 
-var sceneRegexp = regexp.MustCompile(`^#+\s+`)
+var (
+	sceneRegexp  = regexp.MustCompile(`^#+\s+`)
+	metaFlag     = []byte("---")
+	metaKVRegexp = regexp.MustCompile(`^(.+):\s*(.+)`)
+	codesFlag    = []byte("```")
+)
 
 func (p *mdParser) parseLine(line []byte) error {
 	p.lineCount++
 	if len(line) == 0 {
 		return nil
 	}
+
+	if p.lineCount == 1 {
+		if bytes.Equal(line, metaFlag) {
+			p.isMeta = true
+			return nil
+		}
+	}
+	if p.isMeta {
+		if bytes.Equal(line, metaFlag) {
+			p.isMeta = false
+			return nil
+		}
+		res := metaKVRegexp.FindSubmatch(line)
+		if len(res[1]) == 0 {
+			return errors.New("无法识别的元属性")
+		}
+		p.meta[string(res[1])] = string(res[2])
+		return nil
+	}
+
+	if p.isCodes {
+		if bytes.Equal(line, codesFlag) {
+			p.isCodes = false
+			p.cur.AddBlock(&Codes{val: string(p.codes)})
+			return nil
+		}
+		line2 := bytes.Clone(line)
+		p.codes = append(p.codes, line2...)
+		p.codes = append(p.codes, []byte("\n")...)
+		return nil
+	}
+	if bytes.Equal(line, codesFlag) {
+		p.isCodes = true
+		return nil
+	}
+
 	i := sceneRegexp.FindIndex(line)
 	if len(i) == 0 {
 		err := p.addNode(string(line))
 		return err
 	}
 	level := bytes.Count(line[:i[1]], []byte("#"))
-	title := string(line[i[1]:])
+	title := string(line[i[1]:]) // 将缓冲区的 byte 转为永久的字符串
 	err := p.createScene(title, level)
 	if err != nil {
 		return err

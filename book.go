@@ -7,12 +7,17 @@ import (
 )
 
 type Book struct {
-	Name      string         `json:"name"`
-	SceneList []*Scene       `json:"scene_list"`
-	Scenes    map[int]string `json:"scenes"`
+	Name     string            `json:"name"`
+	Meta     map[string]string `json:"meta"`
+	Scenes   map[int]string    `json:"scenes"`
+	topScene []*Scene          `json:"scene_list"`
 }
 
 type Code struct {
+	val string
+}
+
+type Codes struct {
 	val string
 }
 
@@ -43,7 +48,7 @@ func (s *Scene) AutoId() {
 
 func (s *Scene) jump(vm RollVM, opt *Opt, g *Game) (string, error) {
 	if s.Level == 1 {
-		for _, top := range g.book.SceneList {
+		for _, top := range g.book.topScene {
 			if top.Title == opt.NextTitle {
 				return top.Execute(vm, g), nil
 			}
@@ -82,10 +87,9 @@ func (s *Scene) Execute(vm RollVM, g *Game) string {
 		case *string:
 			vm.Store("$t文本行", *v)
 			sb.WriteString(vm.ExecCaption(TextCaption))
-			sb.WriteString("\n")
 		case *Opt:
 			if v.BeforeCondition != "" {
-				if vm.ExecCond(v.BeforeCondition) {
+				if vm.ExecCond(v.BeforeCondition) == false {
 					continue
 				}
 			}
@@ -98,6 +102,8 @@ func (s *Scene) Execute(vm RollVM, g *Game) string {
 			sb.WriteString("\n")
 		case *Code:
 			sb.WriteString(vm.Exec(v.val))
+		case *Codes:
+			vm.Exec(v.val)
 		}
 	}
 	return sb.String()
@@ -117,7 +123,9 @@ func (s *Scene) Find(n int) *Scene {
 
 func (s *Scene) AddChild(c *Scene) {
 	c.parent = s
+	c.ParentId = s.ParentId
 	s.children = append(s.children, c)
+	s.ChildrenId = append(s.ChildrenId, c.Id)
 }
 
 func (s *Scene) AddBlock(b any) {

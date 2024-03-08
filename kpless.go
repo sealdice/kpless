@@ -64,7 +64,7 @@ func (l *KPLess) Input(vm RollVM, id, content string) (string, error) {
 }
 
 func (l *KPLess) LoadMarkDown(name string) error {
-	p := mdParser{}
+	p := newMDParser()
 	file, err := os.Open(name)
 	if err != nil {
 		return err
@@ -77,7 +77,7 @@ func (l *KPLess) LoadMarkDown(name string) error {
 		}
 	}
 	p.scenes = append(p.scenes, p.cur)
-	b := &Book{SceneList: p.scenes, Name: name}
+	b := &Book{topScene: p.scenes, Name: name, Meta: p.meta}
 	l.books = append(l.books, b)
 	return nil
 }
