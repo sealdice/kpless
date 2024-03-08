@@ -2,7 +2,7 @@ package kpless
 
 import (
 	"errors"
-	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -12,13 +12,12 @@ type Book struct {
 	Scenes    map[int]string `json:"scenes"`
 }
 
-type Text struct {
+type Code struct {
 	val string
 }
 
 type Opt struct {
-	NextId          int    `json:"next_id"`
-	NextTip         string `json:"next_tip"`
+	Content         string `json:"next_tip"`
 	NextTitle       string `json:"next_title"`
 	BeforeCondition string `json:"before_condition"`
 	AfterEval       string `json:"after_eval"`
@@ -42,44 +41,63 @@ func (s *Scene) AutoId() {
 	}
 }
 
-func (s *Scene) Jump(opt *Opt, g *Game) (string, error) {
+func (s *Scene) jump(vm RollVM, opt *Opt, g *Game) (string, error) {
 	if s.Level == 1 {
-		for _, s2 := range g.book.SceneList {
-			if s2.Title == opt.NextTitle {
-				return s2.Execute(g), nil
+		for _, top := range g.book.SceneList {
+			if top.Title == opt.NextTitle {
+				return top.Execute(vm, g), nil
 			}
 		}
-		return "", errors.New("找不到要跳转的目标场景 请联系作者修改")
+		return "", errors.New(vm.ExecCaption(NoFoundJumpToScene))
 	}
 	for _, child := range s.children {
 		if child.Title == opt.NextTitle {
-			return child.Execute(g), nil
+			return child.Execute(vm, g), nil
 		}
 	}
 	if s.parent != nil {
-		return s.parent.Jump(opt, g)
+		return s.parent.jump(vm, opt, g)
 	}
-	return "", errors.New("不是顶级场景又不是分支场景 请联系作者")
+	return "", errors.New(vm.ExecCaption(NoTopNoForkScene))
 }
 
-func (s *Scene) Execute(g *Game) string {
+func (s *Scene) Jump(vm RollVM, opt *Opt, g *Game) (string, error) {
+	res, err := s.jump(vm, opt, g)
+	if err == nil && opt.AfterEval != "" {
+		_ = vm.Exec(opt.AfterEval)
+	}
+	return res, err
+}
+
+func (s *Scene) Execute(vm RollVM, g *Game) string {
 	g.scene = s
 	g.ResetOpt()
 	var sb strings.Builder
-	i := 0
-	sb.WriteString("#")
-	sb.WriteString(s.Title)
+	var i uint64
+	vm.Store("$t场景标题", s.Title)
+	sb.WriteString(vm.ExecCaption(TitleCaption))
 	sb.WriteString("\n")
 	for _, b := range s.Block {
-		switch a := b.(type) {
-		case *Text:
-			sb.WriteString(a.val)
+		switch v := b.(type) {
+		case *string:
+			vm.Store("$t文本行", *v)
+			sb.WriteString(vm.ExecCaption(TextCaption))
 			sb.WriteString("\n")
 		case *Opt:
-			g.AddOpt(a)
+			if v.BeforeCondition != "" {
+				if vm.ExecCond(v.BeforeCondition) {
+					continue
+				}
+			}
+			g.AddOpt(v)
 			i++
-			sb.WriteString(fmt.Sprintf("%d. %s => %s", i, a.NextTip, a.NextTitle))
+			vm.Store("$t选项序号", strconv.FormatUint(i, 10))
+			vm.Store("$t选项内容", v.Content)
+			vm.Store("$t目标场景标题", v.NextTitle)
+			sb.WriteString(vm.ExecCaption(OptCaption))
 			sb.WriteString("\n")
+		case *Code:
+			sb.WriteString(vm.Exec(v.val))
 		}
 	}
 	return sb.String()

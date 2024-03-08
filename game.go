@@ -14,10 +14,10 @@ type Game struct {
 	opts  []*Opt
 }
 
-func (g *Game) Next(content string) (string, error) {
+func (g *Game) Next(ctx RollVM, content string) (string, error) {
 	if g.scene == nil {
 		g.scene = g.book.SceneList[0]
-		return g.scene.Execute(g), nil
+		return g.scene.Execute(ctx, g), nil
 	}
 
 	content = strings.TrimSpace(content)
@@ -30,12 +30,12 @@ func (g *Game) Next(content string) (string, error) {
 		if n < 0 || n >= len(g.opts) {
 			return "", fmt.Errorf("输入的数字与选项不匹配 %d", i)
 		}
-		return g.scene.Jump(g.opts[n], g)
+		return g.scene.Jump(ctx, g.opts[n], g)
 	}
 
 	for _, opt := range g.opts {
-		if opt.NextTip == content {
-			return g.scene.Jump(opt, g)
+		if opt.Content == content {
+			return g.scene.Jump(ctx, opt, g)
 		}
 	}
 	return "不理解选项含义 游戏结束", io.EOF

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"regexp"
+	"strings"
 )
 
 type mdParser struct {
@@ -47,23 +48,53 @@ func (p *mdParser) createScene(title string, nextLevel int) error {
 	return nil
 }
 
-// * {cond} [tip](#title)
-var optRegexp = regexp.MustCompile(`^\*\s+(\{[\s\S]+})?\s*\[(.+)]\(#(.+)\)\s*(\{[\s\S]+})?`)
+// * {cond} [tip](#title) {after}
+var optRegexp = regexp.MustCompile(`^\*\s+({[\s\S]+})?\s*\[(.+)]\(#(.+)\)\s*({[\s\S]+})?`)
 
 func (p *mdParser) addNode(line string) error {
 	ls := optRegexp.FindStringSubmatch(line)
 	if len(ls) != 0 {
-		if ls[3] == p.cur.Title {
-			return fmt.Errorf("跳转到自己死循环 %d", p.lineCount)
+		if ls[3] == p.cur.Title && ls[1] == "" {
+			return fmt.Errorf("跳转到自己，且没有跳出条件，形成死循环 %d", p.lineCount)
 		}
+		r := strings.NewReplacer("{", "", "}", "")
 		p.cur.AddBlock(&Opt{
-			BeforeCondition: ls[1],
-			NextTip:         ls[2],
+			BeforeCondition: r.Replace(ls[1]),
+			Content:         ls[2],
 			NextTitle:       ls[3],
+			AfterEval:       r.Replace(ls[4]),
 		})
 		return nil
 	}
-	p.cur.AddBlock(&Text{line})
+	// A { B1 { B2 } B3 { B4 } B5 } C1 { D1 } E1
+	count := 0
+	i := 0
+	for {
+		if i >= len(line) {
+			if line != "" {
+				p.cur.AddBlock(&line)
+			}
+			break
+		}
+		if line[i:i+1] == "{" {
+			if count == 0 {
+				l := line[:i]
+				p.cur.AddBlock(&l)
+				line = line[i+1:]
+				i = 0
+			}
+			count++
+		}
+		if line[i:i+1] == "}" {
+			count--
+			if count == 0 {
+				p.cur.AddBlock(&Code{line[:i]})
+				line = line[i+1:]
+				i = 0
+			}
+		}
+		i++
+	}
 	return nil
 }
 
@@ -76,9 +107,8 @@ func (p *mdParser) parseLine(line []byte) error {
 	}
 	i := sceneRegexp.FindIndex(line)
 	if len(i) == 0 {
-		p.addNode(string(line)) // TODO: 完成条件判断后记得处理错误
-		return nil
-		// return err
+		err := p.addNode(string(line))
+		return err
 	}
 	level := bytes.Count(line[:i[1]], []byte("#"))
 	title := string(line[i[1]:])

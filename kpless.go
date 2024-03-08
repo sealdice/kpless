@@ -8,35 +8,38 @@ import (
 )
 
 func New() *KPLess {
-	captionFun := func(i Caption) string {
-		switch i {
-		case NoBookFound:
-			return "未配置冒险书，无法开始游戏"
-		}
-		return "此处应该有文案 但是没有，请联系开发者"
-	}
 	return &KPLess{
-		mu:         sync.RWMutex{},
-		games:      make(map[string]*Game),
-		books:      nil,
-		GetCaption: captionFun,
+		mu:    sync.RWMutex{},
+		games: make(map[string]*Game),
+		books: nil,
 	}
 }
 
 type Caption int
 
 const (
-	NoBookFound Caption = iota // 未配置冒险书，无法开始游戏
+	NoFoundBook        Caption = iota // 未配置冒险书
+	NoFoundJumpToScene                // 找不到要跳转的目标场景
+	NoTopNoForkScene                  // 不是顶级场景又不是分支场景
+	TitleCaption
+	OptCaption
+	TextCaption
 )
 
-type KPLess struct {
-	mu         sync.RWMutex
-	games      map[string]*Game
-	books      []*Book
-	GetCaption func(i Caption) string
+type RollVM interface {
+	Exec(text string) string
+	ExecCond(text string) bool
+	ExecCaption(i Caption) string
+	Store(name, val string)
 }
 
-func (l *KPLess) SetGame(id, name string) error {
+type KPLess struct {
+	mu    sync.RWMutex
+	games map[string]*Game
+	books []*Book
+}
+
+func (l *KPLess) SetGame(vm RollVM, id, name string) error {
 	for _, book := range l.books {
 		if book.Name == name {
 			l.mu.Lock()
@@ -48,14 +51,14 @@ func (l *KPLess) SetGame(id, name string) error {
 			return nil
 		}
 	}
-	return errors.New(l.GetCaption(NoBookFound))
+	return errors.New(vm.ExecCaption(NoFoundBook))
 }
 
-func (l *KPLess) Input(id, content string) (string, error) {
+func (l *KPLess) Input(vm RollVM, id, content string) (string, error) {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 	if g, ok := l.games[id]; ok {
-		return g.Next(content)
+		return g.Next(vm, content)
 	}
 	return "", errors.New("")
 }
