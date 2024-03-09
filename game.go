@@ -8,15 +8,17 @@ import (
 )
 
 type Game struct {
-	kp    *KPLess
-	scene *Scene
-	book  *Book
-	opts  []*Opt
+	kp       *KPLess
+	scene    *Scene
+	book     *Book
+	Opts     []*Block `json:"opts"`
+	BookName string   `json:"book_name"`
+	SceneId  int      `json:"scene_id"`
 }
 
 func (g *Game) Next(ctx RollVM, content string) (string, error) {
 	if g.scene == nil {
-		g.scene = g.book.topScene[0]
+		g.scene = g.book.scenes[0]
 		return g.scene.Execute(ctx, g), nil
 	}
 
@@ -27,14 +29,14 @@ func (g *Game) Next(ctx RollVM, content string) (string, error) {
 
 	if i, err := strconv.ParseUint(content, 10, 32); err == nil {
 		n := int(i - 1)
-		if n < 0 || n >= len(g.opts) {
+		if n < 0 || n >= len(g.Opts) {
 			return "", fmt.Errorf("输入的数字与选项不匹配 %d", i)
 		}
-		return g.scene.Jump(ctx, g.opts[n], g)
+		return g.scene.Jump(ctx, g.Opts[n], g)
 	}
 
-	for _, opt := range g.opts {
-		if opt.Content == content {
+	for _, opt := range g.Opts {
+		if opt.NextTip == content {
 			return g.scene.Jump(ctx, opt, g)
 		}
 	}
@@ -42,9 +44,9 @@ func (g *Game) Next(ctx RollVM, content string) (string, error) {
 }
 
 func (g *Game) ResetOpt() {
-	g.opts = nil
+	g.Opts = nil
 }
 
-func (g *Game) AddOpt(o *Opt) {
-	g.opts = append(g.opts, o)
+func (g *Game) AddOpt(o *Block) {
+	g.Opts = append(g.Opts, o)
 }

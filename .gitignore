@@ -1,4 +1,5 @@
 .idea/
 
 *.exe
-test*.md
+t*.md
+t*.json

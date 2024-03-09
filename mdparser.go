@@ -1,17 +1,23 @@
 package kpless
 
 import (
+	"bufio"
 	"bytes"
 	"errors"
 	"fmt"
+	"os"
 	"regexp"
 )
 
-func newMDParser() *mdParser {
-	return &mdParser{meta: map[string]string{}}
+func newMDParser() mdParser {
+	return mdParser{
+		meta: map[string]string{},
+		book: newBook(),
+	}
 }
 
 type mdParser struct {
+	fileName  string
 	isMeta    bool
 	isCodes   bool
 	meta      map[string]string
@@ -23,9 +29,37 @@ type mdParser struct {
 	codes     []byte
 }
 
+func (p *mdParser) loadFile(name string) error {
+	file, err := os.Open(name)
+	if err != nil {
+		return err
+	}
+	p.fileName = name
+	s := bufio.NewScanner(file)
+	for s.Scan() {
+		err := p.parseLine(s.Bytes())
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (p *mdParser) getBook() *Book {
+	p.book.Meta = p.meta
+	p.book.scenes = p.scenes
+	if v, ok := p.meta["name"]; ok {
+		p.book.Name = v
+	} else {
+		p.book.Name = p.fileName
+	}
+	return &p.book
+}
+
 func (p *mdParser) createScene(title string, nextLevel int) error {
 	p.pageCount++
 	next := &Scene{Id: p.pageCount, Title: title, Level: nextLevel}
+	p.book.Scenes[p.pageCount] = next
 
 	if p.cur == nil {
 		p.cur = next
@@ -65,12 +99,7 @@ func (p *mdParser) addNode(line string) error {
 		if ls[3] == p.cur.Title && ls[1] == "" {
 			return fmt.Errorf("跳转到自己，且没有跳出条件，形成死循环 %d", p.lineCount)
 		}
-		p.cur.AddBlock(&Opt{
-			BeforeCondition: ls[1],
-			Content:         ls[2],
-			NextTitle:       ls[3],
-			AfterEval:       ls[4],
-		})
+		p.cur.AddBlock(newOpt(ls[2], ls[3], ls[1], ls[4]))
 		return nil
 	}
 	// A { B1 { B2 } B3 { B4 } B5 } C1 { D1 } E1
@@ -79,13 +108,13 @@ func (p *mdParser) addNode(line string) error {
 	for {
 		if i >= len(line) {
 			line += "\n"
-			p.cur.AddBlock(&line)
+			p.cur.AddBlock(newText(line))
 			break
 		}
 		if line[i:i+1] == "{" {
 			if count == 0 {
 				l := line[:i]
-				p.cur.AddBlock(&l)
+				p.cur.AddBlock(newText(l))
 				line = line[i+1:]
 				i = 0
 			}
@@ -94,7 +123,7 @@ func (p *mdParser) addNode(line string) error {
 		if line[i:i+1] == "}" {
 			count--
 			if count == 0 {
-				p.cur.AddBlock(&Code{line[:i]})
+				p.cur.AddBlock(newInnerCode(line[:i]))
 				line = line[i+1:]
 				i = 0
 			}
@@ -139,7 +168,7 @@ func (p *mdParser) parseLine(line []byte) error {
 	if p.isCodes {
 		if bytes.Equal(line, codesFlag) {
 			p.isCodes = false
-			p.cur.AddBlock(&Codes{val: string(p.codes)})
+			p.cur.AddBlock(newMultiLineCode(string(p.codes)))
 			return nil
 		}
 		line2 := bytes.Clone(line)

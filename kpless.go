@@ -1,17 +1,15 @@
 package kpless
 
 import (
-	"bufio"
 	"errors"
-	"os"
 	"sync"
 )
 
 func New() *KPLess {
 	return &KPLess{
 		mu:    sync.RWMutex{},
-		games: make(map[string]*Game),
-		books: nil,
+		Games: make(map[string]*Game),
+		Books: nil,
 	}
 }
 
@@ -35,15 +33,15 @@ type RollVM interface {
 
 type KPLess struct {
 	mu    sync.RWMutex
-	games map[string]*Game
-	books []*Book
+	Games map[string]*Game `json:"games"`
+	Books []*Book          `json:"books"`
 }
 
 func (l *KPLess) SetGame(vm RollVM, id, name string) error {
-	for _, book := range l.books {
+	for _, book := range l.Books {
 		if book.Name == name {
 			l.mu.Lock()
-			l.games[id] = &Game{
+			l.Games[id] = &Game{
 				kp:   l,
 				book: book,
 			}
@@ -57,7 +55,7 @@ func (l *KPLess) SetGame(vm RollVM, id, name string) error {
 func (l *KPLess) Input(vm RollVM, id, content string) (string, error) {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
-	if g, ok := l.games[id]; ok {
+	if g, ok := l.Games[id]; ok {
 		return g.Next(vm, content)
 	}
 	return "", errors.New("")
@@ -65,19 +63,11 @@ func (l *KPLess) Input(vm RollVM, id, content string) (string, error) {
 
 func (l *KPLess) LoadMarkDown(name string) error {
 	p := newMDParser()
-	file, err := os.Open(name)
+	err := p.loadFile(name)
 	if err != nil {
 		return err
 	}
-	s := bufio.NewScanner(file)
-	for s.Scan() {
-		err := p.parseLine(s.Bytes())
-		if err != nil {
-			return err
-		}
-	}
 	p.scenes = append(p.scenes, p.cur)
-	b := &Book{topScene: p.scenes, Name: name, Meta: p.meta}
-	l.books = append(l.books, b)
+	l.Books = append(l.Books, p.getBook())
 	return nil
 }

@@ -6,49 +6,74 @@ import (
 	"strings"
 )
 
+func newBook() Book {
+	return Book{Meta: map[string]string{}, Scenes: map[int]*Scene{}}
+}
+
 type Book struct {
-	Name     string            `json:"name"`
-	Meta     map[string]string `json:"meta"`
-	Scenes   map[int]string    `json:"scenes"`
-	topScene []*Scene          `json:"scene_list"`
+	Name   string            `json:"name"`
+	Meta   map[string]string `json:"meta"`
+	Scenes map[int]*Scene    `json:"scenes"`
+	scenes []*Scene
 }
 
-type Code struct {
-	val string
+type blockType int
+
+const (
+	textType blockType = iota
+	innerCodeType
+	multiLineCodeType
+	optType
+)
+
+type Block struct {
+	Type          blockType `json:"type"`
+	Text          string    `json:"text,omitempty"`
+	InnerCode     string    `json:"inner_code,omitempty"`
+	MultiLineCode string    `json:"code,omitempty"`
+	// Opt
+	NextTip         string `json:"next_tip,omitempty"`
+	NextTitle       string `json:"next_title,omitempty"`
+	BeforeCondition string `json:"before_condition,omitempty"`
+	AfterEval       string `json:"after_eval,omitempty"`
 }
 
-type Codes struct {
-	val string
+func newText(text string) *Block {
+	return &Block{Type: textType, Text: text}
 }
 
-type Opt struct {
-	Content         string `json:"next_tip"`
-	NextTitle       string `json:"next_title"`
-	BeforeCondition string `json:"before_condition"`
-	AfterEval       string `json:"after_eval"`
+func newInnerCode(code string) *Block {
+	return &Block{Type: innerCodeType, InnerCode: code}
 }
 
-type Scene struct {
-	Id         int
-	Title      string `json:"title"`
-	Level      int    `json:"level"`
-	Block      []any  `json:"block"`
-	parent     *Scene
-	children   []*Scene
-	ParentId   int   `json:"parent_id"`
-	ChildrenId []int `json:"children_id"`
+func newMultiLineCode(code string) *Block {
+	return &Block{Type: multiLineCodeType, MultiLineCode: code}
 }
 
-func (s *Scene) AutoId() {
-	s.ParentId = s.parent.Id
-	for _, child := range s.children {
-		s.ChildrenId = append(s.ChildrenId, child.Id)
+func newOpt(tip, title, cond, after string) *Block {
+	return &Block{
+		Type:            optType,
+		NextTip:         tip,
+		NextTitle:       title,
+		BeforeCondition: cond,
+		AfterEval:       after,
 	}
 }
 
-func (s *Scene) jump(vm RollVM, opt *Opt, g *Game) (string, error) {
+type Scene struct {
+	Id         int      `json:"id"`
+	Title      string   `json:"title"`
+	Level      int      `json:"level"`
+	Block      []*Block `json:"block"`
+	ParentId   int      `json:"parent_id"`
+	ChildrenId []int    `json:"children_id"`
+	parent     *Scene
+	children   []*Scene
+}
+
+func (s *Scene) jump(vm RollVM, opt *Block, g *Game) (string, error) {
 	if s.Level == 1 {
-		for _, top := range g.book.topScene {
+		for _, top := range g.book.scenes {
 			if top.Title == opt.NextTitle {
 				return top.Execute(vm, g), nil
 			}
@@ -66,7 +91,7 @@ func (s *Scene) jump(vm RollVM, opt *Opt, g *Game) (string, error) {
 	return "", errors.New(vm.ExecCaption(NoTopNoForkScene))
 }
 
-func (s *Scene) Jump(vm RollVM, opt *Opt, g *Game) (string, error) {
+func (s *Scene) Jump(vm RollVM, opt *Block, g *Game) (string, error) {
 	res, err := s.jump(vm, opt, g)
 	if err == nil && opt.AfterEval != "" {
 		_ = vm.Exec(opt.AfterEval)
@@ -83,27 +108,27 @@ func (s *Scene) Execute(vm RollVM, g *Game) string {
 	sb.WriteString(vm.ExecCaption(TitleCaption))
 	sb.WriteString("\n")
 	for _, b := range s.Block {
-		switch v := b.(type) {
-		case *string:
-			vm.Store("$t文本行", *v)
+		switch b.Type {
+		case textType:
+			vm.Store("$t文本行", b.Text)
 			sb.WriteString(vm.ExecCaption(TextCaption))
-		case *Opt:
-			if v.BeforeCondition != "" {
-				if vm.ExecCond(v.BeforeCondition) == false {
+		case optType:
+			if b.BeforeCondition != "" {
+				if vm.ExecCond(b.BeforeCondition) == false {
 					continue
 				}
 			}
-			g.AddOpt(v)
+			g.AddOpt(b)
 			i++
 			vm.Store("$t选项序号", strconv.FormatUint(i, 10))
-			vm.Store("$t选项内容", v.Content)
-			vm.Store("$t目标场景标题", v.NextTitle)
+			vm.Store("$t选项内容", b.NextTip)
+			vm.Store("$t目标场景标题", b.NextTitle)
 			sb.WriteString(vm.ExecCaption(OptCaption))
 			sb.WriteString("\n")
-		case *Code:
-			sb.WriteString(vm.Exec(v.val))
-		case *Codes:
-			vm.Exec(v.val)
+		case innerCodeType:
+			sb.WriteString(vm.Exec(b.InnerCode))
+		case multiLineCodeType:
+			vm.Exec(b.MultiLineCode)
 		}
 	}
 	return sb.String()
@@ -128,6 +153,6 @@ func (s *Scene) AddChild(c *Scene) {
 	s.ChildrenId = append(s.ChildrenId, c.Id)
 }
 
-func (s *Scene) AddBlock(b any) {
+func (s *Scene) AddBlock(b *Block) {
 	s.Block = append(s.Block, b)
 }

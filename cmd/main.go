@@ -2,7 +2,9 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -61,13 +63,24 @@ func (v *dsvm) Store(name, val string) {
 func main() {
 	kp := kpless.New()
 	vm := &dsvm{ds.NewVM()}
-	err := kp.LoadMarkDown("向火独行.md")
+	var book string
+	var gameName string
+	flag.StringVar(&book, "file", "向火独行.md", "指定 md 文件")
+	flag.StringVar(&gameName, "game", "向火独行", "指定游戏")
+	flag.Parse()
+	err := kp.LoadMarkDown(book)
 	if err != nil {
 		panic(err)
 	}
-	_ = kp.SetGame(vm, "cli", "向火独行.md")
+	err = kp.SetGame(vm, "cli", gameName)
+	if err != nil {
+		panic(err)
+	}
 	inputs := bufio.NewScanner(os.Stdin)
 	for inputs.Scan() {
+		if inputs.Text() == "exit" {
+			break
+		}
 		res, err := kp.Input(vm, "cli", inputs.Text())
 		if errors.Is(err, io.EOF) {
 			fmt.Println(res)
@@ -79,4 +92,6 @@ func main() {
 		}
 		fmt.Println(res)
 	}
+	js, _ := json.MarshalIndent(kp, "", "  ")
+	os.WriteFile("tmp.json", js, 066)
 }
