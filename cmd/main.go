@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"html/template"
 	"io"
 	"os"
 	"regexp"
@@ -70,14 +71,21 @@ func (l logger) Infof(format string, args ...any) {
 	fmt.Println(fmt.Sprintf(format, args...))
 }
 
+type Render struct {
+	Name string
+	Data string
+}
+
 func main() {
 	log := logger{}
 	kp := kpless.New(log)
 	vm := &dsvm{ds.NewVM()}
 	var book string
 	var gameName string
+	var mode bool
 	flag.StringVar(&book, "file", "向火独行.md", "指定 md 文件")
 	flag.StringVar(&gameName, "game", "向火独行", "指定游戏")
+	flag.BoolVar(&mode, "mode", true, "")
 	flag.Parse()
 	err := kp.LoadMarkDownBook(book)
 	if err != nil {
@@ -86,6 +94,19 @@ func main() {
 	err = kp.SetGame(vm, "cli", gameName)
 	if err != nil {
 		panic(err)
+	}
+	if mode {
+		text, _ := os.ReadFile("tmpl.html")
+		tmpl, _ := template.New("index").Parse(string(text))
+		_ = os.Remove("index.html")
+		jsonRaw, _ := json.Marshal(kp.Books[gameName])
+		r := Render{
+			Name: kp.Games["cli"].BookName,
+			Data: string(jsonRaw),
+		}
+		file, _ := os.Create("index.html")
+		_ = tmpl.Execute(file, r)
+		return
 	}
 	inputs := bufio.NewScanner(os.Stdin)
 	for inputs.Scan() {
@@ -103,6 +124,4 @@ func main() {
 		}
 		fmt.Println(res)
 	}
-	js, _ := json.MarshalIndent(kp, "", "  ")
-	os.WriteFile("tmp.json", js, 066)
 }

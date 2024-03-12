@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<!-- 绑定类型提供高亮和类型
+{{- /*gotype: kpless/cmd.Render*/ -}}
+-->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ .Name }}</title>
+    <style>
+    </style>
+</head>
+<body>
+<template id="game_data">{{ .Data }}</template>
+<script>
+let game_data = document.getElementById("game_data").innerHTML
+class Game {
+    /** @param json {string} **/
+    constructor(json) {
+        let book = JSON.parse(json)
+    }
+}
+</script>
+<h1>{{ .Name }}</h1>
+<div id="book">XX</div>
+<div id="fba"></div>
+</body>
+</html>

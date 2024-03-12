@@ -20,7 +20,7 @@ func New(logger Logger) *KPLess {
 	return &KPLess{
 		mu:    sync.RWMutex{},
 		Games: make(map[string]*Game),
-		Books: nil,
+		Books: make(map[string]*Book),
 	}
 }
 
@@ -52,7 +52,7 @@ type RollVM interface {
 type KPLess struct {
 	mu    sync.RWMutex
 	Games map[string]*Game `json:"games"`
-	Books map[string]*Book `json:"-"`
+	Books map[string]*Book `json:"books"`
 }
 
 func (l *KPLess) Input(vm RollVM, id, content string) (string, error) {
