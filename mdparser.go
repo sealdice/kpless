@@ -3,8 +3,10 @@ package kpless
 import (
 	"bufio"
 	"bytes"
+	"crypto/sha256"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"regexp"
 )
@@ -31,6 +33,11 @@ type mdParser struct {
 
 func (p *mdParser) loadFile(name string) error {
 	file, err := os.Open(name)
+	hash := sha256.New()
+	if _, err = io.Copy(hash, file); err != nil {
+		return err
+	}
+	p.book.FileHash = string(hash.Sum(nil))
 	if err != nil {
 		return err
 	}
@@ -59,7 +66,7 @@ func (p *mdParser) getBook() *Book {
 func (p *mdParser) createScene(title string, nextLevel int) error {
 	p.pageCount++
 	next := &Scene{Id: p.pageCount, Title: title, Level: nextLevel}
-	p.book.Scenes[p.pageCount] = next
+	p.book.SceneDict[p.pageCount] = next
 
 	if p.cur == nil {
 		p.cur = next

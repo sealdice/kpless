@@ -7,14 +7,15 @@ import (
 )
 
 func newBook() Book {
-	return Book{Meta: map[string]string{}, Scenes: map[int]*Scene{}}
+	return Book{Meta: map[string]string{}, SceneDict: map[int]*Scene{}}
 }
 
 type Book struct {
-	Name   string            `json:"name"`
-	Meta   map[string]string `json:"meta"`
-	Scenes map[int]*Scene    `json:"scenes"`
-	scenes []*Scene
+	FileHash  string
+	Name      string            `json:"name"`
+	Meta      map[string]string `json:"meta"`
+	SceneDict map[int]*Scene    `json:"scene_dict"`
+	scenes    []*Scene
 }
 
 type blockType int
@@ -101,6 +102,7 @@ func (s *Scene) Jump(vm RollVM, opt *Block, g *Game) (string, error) {
 
 func (s *Scene) Execute(vm RollVM, g *Game) string {
 	g.scene = s
+	g.SceneId = s.Id
 	g.ResetOpt()
 	var sb strings.Builder
 	var i uint64

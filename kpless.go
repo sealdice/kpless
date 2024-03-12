@@ -1,11 +1,22 @@
 package kpless
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 	"sync"
+
+	"github.com/Masterminds/semver/v3"
 )
 
-func New() *KPLess {
+type Logger interface {
+	Infof(format string, args ...any)
+}
+
+var log Logger
+
+func New(logger Logger) *KPLess {
+	log = logger
 	return &KPLess{
 		mu:    sync.RWMutex{},
 		Games: make(map[string]*Game),
@@ -22,6 +33,13 @@ const (
 	TitleCaption
 	OptCaption
 	TextCaption
+	ModBreakUpdate
+	LoadGameNoFoundBookT
+)
+
+var (
+	ErrModBreakUpdate      = errors.New("游玩的模组发生了破坏性更新")
+	ErrLoadGameNoFoundBook = errors.New("无法找到曾经游玩的模组")
 )
 
 type RollVM interface {
@@ -34,22 +52,7 @@ type RollVM interface {
 type KPLess struct {
 	mu    sync.RWMutex
 	Games map[string]*Game `json:"games"`
-	Books []*Book          `json:"books"`
-}
-
-func (l *KPLess) SetGame(vm RollVM, id, name string) error {
-	for _, book := range l.Books {
-		if book.Name == name {
-			l.mu.Lock()
-			l.Games[id] = &Game{
-				kp:   l,
-				book: book,
-			}
-			l.mu.Unlock()
-			return nil
-		}
-	}
-	return errors.New(vm.ExecCaption(NoFoundBook))
+	Books map[string]*Book `json:"-"`
 }
 
 func (l *KPLess) Input(vm RollVM, id, content string) (string, error) {
@@ -58,16 +61,77 @@ func (l *KPLess) Input(vm RollVM, id, content string) (string, error) {
 	if g, ok := l.Games[id]; ok {
 		return g.Next(vm, content)
 	}
-	return "", errors.New("")
+	return vm.ExecCaption(NoFoundBook), nil
 }
 
-func (l *KPLess) LoadMarkDown(name string) error {
+const (
+	MetaName    = "name"
+	metaVersion = "version"
+)
+
+var mustMeta = []string{
+	MetaName,
+	metaVersion,
+}
+
+func (l *KPLess) LoadMarkDownBook(name string) error {
 	p := newMDParser()
 	err := p.loadFile(name)
 	if err != nil {
 		return err
 	}
 	p.scenes = append(p.scenes, p.cur)
-	l.Books = append(l.Books, p.getBook())
+	book := p.getBook()
+	for _, s := range mustMeta {
+		if _, ok := book.Meta[s]; !ok {
+			return fmt.Errorf("必须提供元属性：%s", s)
+		}
+	}
+	l.Books[book.Meta[MetaName]] = p.getBook()
 	return nil
+}
+
+func (l *KPLess) SetGame(vm RollVM, id, name string) error {
+	for _, book := range l.Books {
+		if book.Name == name {
+			l.mu.Lock()
+			l.Games[id] = &Game{
+				book:     book,
+				BookName: book.Name,
+			}
+			l.mu.Unlock()
+			return nil
+		}
+	}
+	return errors.New(vm.ExecCaption(NoFoundBook))
+}
+
+func (l *KPLess) LoadGames(b []byte) error {
+	err := json.Unmarshal(b, &l.Games)
+	if err != nil {
+		return err
+	}
+	for _, game := range l.Games {
+		book, ok := l.Books[game.BookName]
+		if !ok {
+			game.err = ErrLoadGameNoFoundBook
+			continue
+		}
+		constraint, err := semver.NewConstraint("^" + game.BookVersion)
+		if err != nil {
+			return err
+		}
+		bv, err := semver.NewVersion(book.Meta[metaVersion])
+		if err != nil {
+			return err
+		}
+		if !constraint.Check(bv) {
+			game.err = ErrModBreakUpdate
+		}
+	}
+	return nil
+}
+
+func (l *KPLess) SaveGames() ([]byte, error) {
+	return json.Marshal(&l.Games)
 }

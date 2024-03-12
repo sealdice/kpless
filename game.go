@@ -1,46 +1,64 @@
 package kpless
 
 import (
+	"errors"
 	"fmt"
-	"io"
 	"strconv"
 	"strings"
+
+	"github.com/samber/lo"
 )
 
 type Game struct {
-	kp       *KPLess
-	scene    *Scene
-	book     *Book
-	Opts     []*Block `json:"opts"`
-	BookName string   `json:"book_name"`
-	SceneId  int      `json:"scene_id"`
+	scene       *Scene
+	book        *Book
+	err         error
+	Opts        []*Block `json:"opts"`
+	BookName    string   `json:"book_name"`
+	BookVersion string   `json:"book_version"`
+	SceneId     int      `json:"scene_id"`
 }
 
-func (g *Game) Next(ctx RollVM, content string) (string, error) {
+var EqualOne = []string{"", ".", "。"}
+
+func WithEqualOne(sl []string) {
+	EqualOne = sl
+}
+
+func (g *Game) Next(vm RollVM, content string) (string, error) {
+	if g.err != nil {
+		if errors.Is(g.err, ErrModBreakUpdate) {
+			return vm.ExecCaption(ModBreakUpdate), nil
+		}
+		if errors.Is(g.err, ErrLoadGameNoFoundBook) {
+			return vm.ExecCaption(LoadGameNoFoundBookT), nil
+		}
+	}
+
 	if g.scene == nil {
 		g.scene = g.book.scenes[0]
-		return g.scene.Execute(ctx, g), nil
+		return g.scene.Execute(vm, g), nil
 	}
 
 	content = strings.TrimSpace(content)
-	if content == "" {
+	if lo.Contains(EqualOne, content) {
 		content = "1"
 	}
 
-	if i, err := strconv.ParseUint(content, 10, 32); err == nil {
+	if i, err := strconv.ParseInt(content, 10, 32); err == nil {
 		n := int(i - 1)
 		if n < 0 || n >= len(g.Opts) {
-			return "", fmt.Errorf("输入的数字与选项不匹配 %d", i)
+			return "", fmt.Errorf("输入的数字超出选项区间 %d", i)
 		}
-		return g.scene.Jump(ctx, g.Opts[n], g)
+		return g.scene.Jump(vm, g.Opts[n], g)
 	}
 
 	for _, opt := range g.Opts {
 		if opt.NextTip == content {
-			return g.scene.Jump(ctx, opt, g)
+			return g.scene.Jump(vm, opt, g)
 		}
 	}
-	return "不理解选项含义 游戏结束", io.EOF
+	return "", errors.New("无法解析的输入")
 }
 
 func (g *Game) ResetOpt() {

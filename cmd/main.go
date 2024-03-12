@@ -10,6 +10,8 @@ import (
 	"os"
 	"regexp"
 
+	"golang.org/x/exp/slog"
+
 	"kpless"
 
 	ds "github.com/sealdice/dicescript"
@@ -40,6 +42,10 @@ func getCaption(i kpless.Caption) string {
 		return "找不到要跳转的目标场景 请联系作者修改"
 	case kpless.NoTopNoForkScene:
 		return "不是顶级场景又不是分支场景 请联系作者"
+	case kpless.LoadGameNoFoundBookT:
+		return "你玩的模组已经绝版了！换个游戏玩吧！"
+	case kpless.ModBreakUpdate:
+		return "你玩的模组发生了破坏性更新，游戏可能无法进入正确流程，还有继续吗"
 	case kpless.OptCaption:
 		return " $t选项序号 .  $t选项内容  =>  $t目标场景标题 "
 	case kpless.TextCaption:
@@ -60,15 +66,22 @@ func (v *dsvm) Store(name, val string) {
 	v.StoreName(name, ds.VMValueNewStr(val))
 }
 
+type logger struct{}
+
+func (l logger) Infof(format string, args ...any) {
+	slog.Info(fmt.Sprintf(format, args...))
+}
+
 func main() {
-	kp := kpless.New()
+	log := logger{}
+	kp := kpless.New(log)
 	vm := &dsvm{ds.NewVM()}
 	var book string
 	var gameName string
 	flag.StringVar(&book, "file", "向火独行.md", "指定 md 文件")
 	flag.StringVar(&gameName, "game", "向火独行", "指定游戏")
 	flag.Parse()
-	err := kp.LoadMarkDown(book)
+	err := kp.LoadMarkDownBook(book)
 	if err != nil {
 		panic(err)
 	}
@@ -88,7 +101,7 @@ func main() {
 		}
 		fmt.Println("-------------")
 		if err != nil {
-			fmt.Println(err.Error(), res)
+			fmt.Println(err.Error())
 		}
 		fmt.Println(res)
 	}
