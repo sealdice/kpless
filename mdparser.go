@@ -3,10 +3,8 @@ package kpless
 import (
 	"bufio"
 	"bytes"
-	"crypto/sha256"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"regexp"
 )
@@ -19,7 +17,6 @@ func newMDParser() mdParser {
 }
 
 type mdParser struct {
-	fileName  string
 	isMeta    bool
 	isCodes   bool
 	meta      map[string]string
@@ -33,15 +30,10 @@ type mdParser struct {
 
 func (p *mdParser) loadFile(name string) error {
 	file, err := os.Open(name)
-	hash := sha256.New()
-	if _, err = io.Copy(hash, file); err != nil {
-		return err
-	}
-	p.book.FileHash = string(hash.Sum(nil))
 	if err != nil {
 		return err
 	}
-	p.fileName = name
+	p.book.Meta["file_name"] = name
 	s := bufio.NewScanner(file)
 	for s.Scan() {
 		err := p.parseLine(s.Bytes())
@@ -55,11 +47,6 @@ func (p *mdParser) loadFile(name string) error {
 func (p *mdParser) getBook() *Book {
 	p.book.Meta = p.meta
 	p.book.scenes = p.scenes
-	if v, ok := p.meta["name"]; ok {
-		p.book.Name = v
-	} else {
-		p.book.Name = p.fileName
-	}
 	return &p.book
 }
 

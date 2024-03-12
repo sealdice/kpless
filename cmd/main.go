@@ -10,8 +10,6 @@ import (
 	"os"
 	"regexp"
 
-	"golang.org/x/exp/slog"
-
 	"kpless"
 
 	ds "github.com/sealdice/dicescript"
@@ -69,7 +67,7 @@ func (v *dsvm) Store(name, val string) {
 type logger struct{}
 
 func (l logger) Infof(format string, args ...any) {
-	slog.Info(fmt.Sprintf(format, args...))
+	fmt.Println(fmt.Sprintf(format, args...))
 }
 
 func main() {

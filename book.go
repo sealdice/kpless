@@ -11,7 +11,6 @@ func newBook() Book {
 }
 
 type Book struct {
-	FileHash  string
 	Name      string            `json:"name"`
 	Meta      map[string]string `json:"meta"`
 	SceneDict map[int]*Scene    `json:"scene_dict"`

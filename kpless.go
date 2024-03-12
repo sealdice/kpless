@@ -87,21 +87,20 @@ func (l *KPLess) LoadMarkDownBook(name string) error {
 			return fmt.Errorf("必须提供元属性：%s", s)
 		}
 	}
-	l.Books[book.Meta[MetaName]] = p.getBook()
+	book.Name = book.Meta[MetaName]
+	l.Books[book.Name] = book
 	return nil
 }
 
 func (l *KPLess) SetGame(vm RollVM, id, name string) error {
-	for _, book := range l.Books {
-		if book.Name == name {
-			l.mu.Lock()
-			l.Games[id] = &Game{
-				book:     book,
-				BookName: book.Name,
-			}
-			l.mu.Unlock()
-			return nil
+	if book, ok := l.Books[name]; ok {
+		l.mu.Lock()
+		l.Games[id] = &Game{
+			book:     book,
+			BookName: book.Name,
 		}
+		l.mu.Unlock()
+		return nil
 	}
 	return errors.New(vm.ExecCaption(NoFoundBook))
 }
